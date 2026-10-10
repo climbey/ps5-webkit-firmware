@@ -72,7 +72,7 @@ minimize_file() {
             ;;
     esac
 
-    chmod --reference="$file" "$tmp_file"
+    chmod 644 "$tmp_file"
     mv -f "$tmp_file" "$file"
 }
 
