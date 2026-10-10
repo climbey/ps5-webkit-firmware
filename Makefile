@@ -71,6 +71,7 @@ endif
 PICO_FQBN := esp32:esp32:esp32:CPUFreq=240,FlashFreq=40,FlashMode=dio,FlashSize=4M,DebugLevel=$(DEBUG_LEVEL),PSRAM=disabled
 S2_FQBN := esp32:esp32:esp32s2:$(S2_USB_OPTIONS),MSCOnBoot=default,DFUOnBoot=default,UploadMode=default,CPUFreq=240,FlashFreq=40,FlashMode=dio,FlashSize=4M,DebugLevel=$(DEBUG_LEVEL),PSRAM=disabled
 S3_FQBN := esp32:esp32:esp32s3:$(S3_USB_OPTIONS),MSCOnBoot=default,DFUOnBoot=default,UploadMode=default,CPUFreq=240,FlashMode=dio,FlashSize=4M,DebugLevel=$(DEBUG_LEVEL),PSRAM=disabled
+S3_16M_FQBN := esp32:esp32:esp32s3:$(S3_USB_OPTIONS),MSCOnBoot=default,DFUOnBoot=default,UploadMode=default,CPUFreq=240,FlashMode=dio,FlashSize=16M,DebugLevel=$(DEBUG_LEVEL),PSRAM=disabled
 PICO_8M_FQBN := esp32:esp32:esp32:CPUFreq=240,FlashFreq=40,FlashMode=dio,FlashSize=8M,DebugLevel=$(DEBUG_LEVEL),PSRAM=disabled
 C3_FQBN := esp32:esp32:esp32c3:$(C3_USB_OPTIONS),CPUFreq=160,FlashFreq=40,FlashMode=dio,FlashSize=4M,DebugLevel=$(DEBUG_LEVEL)
 ESP8266_FQBN := esp8266:esp8266:generic:eesz=4M3M,FlashMode=dout,FlashFreq=40,xtal=80,CrystalFreq=26,baud=921600,ssl=all,mmu=3232,non32xfer=fast,vt=flash,exception=disabled,stacksmash=disabled,ip=lm2f,sdk=nonosdk_190703,lvl=None____,dbg=Disabled,wipe=none,led=2
@@ -83,6 +84,10 @@ PICO_8M_FLASH_SIZE := 8388608
 PICO_8M_APP_PARTITION_SIZE := 1572864
 PICO_8M_LITTLEFS_SIZE := 0x660000
 PICO_8M_LITTLEFS_OFFSET := 0x190000
+S3_16M_FLASH_SIZE := 16777216
+S3_16M_APP_PARTITION_SIZE := 1572864
+S3_16M_LITTLEFS_SIZE := 0xE70000
+S3_16M_LITTLEFS_OFFSET := 0x190000
 
 LITTLEFS_IMAGE := $(COMMON_BUILD_DIR)/$(PROJECT_NAME).littlefs.bin
 PICO_APP := $(PICO_BUILD_DIR)/$(PROJECT_NAME).ino.bin
@@ -102,6 +107,13 @@ PICO_8M_APP := $(PICO_8M_OUTPUT_DIR)/$(PROJECT_NAME).ino.bin
 PICO_8M_BOOTLOADER := $(PICO_8M_OUTPUT_DIR)/$(PROJECT_NAME).ino.bootloader.bin
 PICO_8M_PARTITIONS := $(PICO_8M_OUTPUT_DIR)/$(PROJECT_NAME).ino.partitions.bin
 PICO_8M_MERGED := $(PICO_8M_BUILD_DIR)/$(PROJECT_NAME).pico-8m.merged.bin
+S3_16M_BUILD_DIR := $(BUILD_DIR)/s3-16m
+S3_16M_SKETCH_DIR := $(S3_16M_BUILD_DIR)/sketch/$(PROJECT_NAME)
+S3_16M_LITTLEFS_IMAGE := $(S3_16M_BUILD_DIR)/$(PROJECT_NAME).littlefs.bin
+S3_16M_APP := $(S3_16M_BUILD_DIR)/$(PROJECT_NAME).ino.bin
+S3_16M_BOOTLOADER := $(S3_16M_BUILD_DIR)/$(PROJECT_NAME).ino.bootloader.bin
+S3_16M_PARTITIONS := $(S3_16M_BUILD_DIR)/$(PROJECT_NAME).ino.partitions.bin
+S3_16M_MERGED := $(S3_16M_BUILD_DIR)/$(PROJECT_NAME).s3-16m.merged.bin
 C3_APP := $(C3_BUILD_DIR)/$(PROJECT_NAME).ino.bin
 C3_BOOTLOADER := $(C3_BUILD_DIR)/$(PROJECT_NAME).ino.bootloader.bin
 C3_PARTITIONS := $(C3_BUILD_DIR)/$(PROJECT_NAME).ino.partitions.bin
@@ -113,7 +125,7 @@ ESP8266_FLASH_SIZE := 4194304
 ESP8266_LITTLEFS_SIZE := 0x2FA000
 ESP8266_LITTLEFS_OFFSET := 0x100000
 
-.PHONY: all debug debug-s2 pico pico-8m s2 s3 c3 8266 littlefs datadir minimize check check-minimize check-data check-littlefs check-8266 clean FORCE
+.PHONY: all debug debug-s2 pico pico-8m s2 s3 s3-16m c3 8266 littlefs datadir minimize check check-minimize check-data check-littlefs check-8266 clean FORCE
 
 all: check $(PICO_MERGED) $(S2_MERGED) $(S3_MERGED) $(C3_MERGED)
 	@echo
@@ -137,6 +149,9 @@ s2: check $(S2_MERGED)
 
 s3: check $(S3_MERGED)
 	@ls -lh "$(S3_MERGED)"
+
+s3-16m: check $(S3_16M_MERGED)
+	@ls -lh "$(S3_16M_MERGED)" "$(S3_16M_LITTLEFS_IMAGE)"
 
 c3: check $(C3_MERGED)
 	@ls -lh "$(C3_MERGED)"
@@ -447,6 +462,53 @@ $(PICO_8M_MERGED): $(PICO_8M_APP) $(PICO_8M_LITTLEFS_IMAGE)
 	    head -c "$$padding" /dev/zero | tr '\000' '\377' >> "$(PICO_8M_MERGED)"
 	fi
 	test "$$($(STAT_SIZE) "$(PICO_8M_MERGED)")" -eq "$(PICO_8M_FLASH_SIZE)"
+
+$(S3_16M_APP): $(PROJECT_DIR)/$(PROJECT_NAME).ino $(SERVER_HEADER) $(PROJECT_DIR)/partitions-s3-16m.csv Makefile $(DNS_LIBRARY_STAMP)
+	@rm -rf "$(S3_16M_SKETCH_DIR)"
+	mkdir -p "$(S3_16M_SKETCH_DIR)"
+	cp "$(PROJECT_DIR)/$(PROJECT_NAME).ino" "$(SERVER_HEADER)" "$(S3_16M_SKETCH_DIR)/"
+	cp "$(PROJECT_DIR)/partitions-s3-16m.csv" "$(S3_16M_SKETCH_DIR)/partitions.csv"
+	$(ARDUINO_CLI) compile \
+	    $(DNS_LIBRARY_ARG) \
+	    --fqbn "$(S3_16M_FQBN)" \
+	    --build-property "compiler.cpp.extra_flags=$(USB_DEBUG_FLAG)" \
+	    --output-dir "$(S3_16M_BUILD_DIR)" \
+	    --build-property "build.partitions=partitions" \
+	    --build-property "build.filesystem=littlefs" \
+	    "$(S3_16M_SKETCH_DIR)"
+	size=$$($(STAT_SIZE) "$(S3_16M_APP)")
+	test "$$size" -le "$(S3_16M_APP_PARTITION_SIZE)" || { echo "Error: S3-16M application exceeds the 1.5 MB partition: $$size bytes" >&2; exit 1; }
+
+$(S3_16M_LITTLEFS_IMAGE): datadir
+	@echo
+	echo "Creating S3 16MB LittleFS image..."
+	mkdir -p "$(S3_16M_BUILD_DIR)"
+	"$(LITTLEFS_TOOL)" \
+	    -c "$(DATA_DIR)" \
+	    -p 256 \
+	    -b 4096 \
+	    -s "$(S3_16M_LITTLEFS_SIZE)" \
+	    "$(S3_16M_LITTLEFS_IMAGE)"
+
+$(S3_16M_MERGED): $(S3_16M_APP) $(S3_16M_LITTLEFS_IMAGE)
+	@"$(ESPTOOL)" \
+	    --chip esp32s3 \
+	    merge_bin \
+	    -o "$(S3_16M_MERGED)" \
+	    --flash_mode dio \
+	    --flash_freq 80m \
+	    --flash_size 16MB \
+	    0x0 "$(S3_16M_BOOTLOADER)" \
+	    0x8000 "$(S3_16M_PARTITIONS)" \
+	    0x10000 "$(S3_16M_APP)" \
+	    "$(S3_16M_LITTLEFS_OFFSET)" "$(S3_16M_LITTLEFS_IMAGE)"
+	size=$$($(STAT_SIZE) "$(S3_16M_MERGED)")
+	test "$$size" -le "$(S3_16M_FLASH_SIZE)" || { echo "Error: S3-16M image exceeds 16 MB: $$size bytes" >&2; exit 1; }
+	if [ "$$size" -lt "$(S3_16M_FLASH_SIZE)" ]; then
+	    padding=$$(($(S3_16M_FLASH_SIZE) - size))
+	    head -c "$$padding" /dev/zero | tr '\000' '\377' >> "$(S3_16M_MERGED)"
+	fi
+	test "$$($(STAT_SIZE) "$(S3_16M_MERGED)")" -eq "$(S3_16M_FLASH_SIZE)"
 
 clean:
 	@rm -rf "$(BUILD_DIR)" "$(DATA_DIR)" "$(MINIFIED_DATA_DIR)"
